@@ -623,7 +623,7 @@ func (c *ModelServingController) scaleUpRoles(ctx context.Context, mi *workloadv
 	for i := 0; i < toCreate; i++ {
 		newIndex := startingIndex + i
 		// Create pods for role
-		err := c.CreatePodByRole(ctx, *targetRole.DeepCopy(), mi, newIndex, servingGroupOrdinal, newRevision)
+		err := c.CreatePodsByRole(ctx, *targetRole.DeepCopy(), mi, newIndex, servingGroupOrdinal, newRevision)
 		if err != nil {
 			klog.Errorf("create role %s for ServingGroup %s failed: %v", utils.GenerateRoleID(targetRole.Name, newIndex), groupName, err)
 		} else {
@@ -1135,7 +1135,7 @@ func (c *ModelServingController) CreatePodsForServingGroup(ctx context.Context, 
 	for _, role := range mi.Spec.Template.Roles {
 		replicas := int(*role.Replicas)
 		for i := 0; i < replicas; i++ {
-			if err := c.CreatePodByRole(ctx, *role.DeepCopy(), mi, i, servingGroupIndex, revision); err != nil {
+			if err := c.CreatePodsByRole(ctx, *role.DeepCopy(), mi, i, servingGroupIndex, revision); err != nil {
 				return err
 			}
 			roleID := utils.GenerateRoleID(role.Name, i)
@@ -1145,7 +1145,7 @@ func (c *ModelServingController) CreatePodsForServingGroup(ctx context.Context, 
 	return nil
 }
 
-func (c *ModelServingController) CreatePodByRole(ctx context.Context, role workloadv1alpha1.Role, mi *workloadv1alpha1.ModelServing, roleIndex int, servingGroupOrdinal int, revision string) error {
+func (c *ModelServingController) CreatePodsByRole(ctx context.Context, role workloadv1alpha1.Role, mi *workloadv1alpha1.ModelServing, roleIndex int, servingGroupOrdinal int, revision string) error {
 	servingGroupName := utils.GenerateServingGroupName(mi.Name, servingGroupOrdinal)
 
 	entryPod := utils.GenerateEntryPod(role, mi, servingGroupName, roleIndex, revision)
@@ -1220,7 +1220,7 @@ func (c *ModelServingController) deleteServingGroup(ctx context.Context, mi *wor
 	if c.isServingGroupDeleted(mi, servingGroupName) {
 		klog.V(2).Infof("ServingGroup %s has been deleted", servingGroupName)
 		c.store.DeleteServingGroup(utils.GetNamespaceName(mi), servingGroupName)
-		// this is needed when a pod is deleted accidently, and the ServingGroup is deleted completely
+		// this is needed when a pod is deleted accidentally, and the ServingGroup is deleted completely
 		// and the controller has no chance supplement it.
 		c.enqueueModelServing(mi)
 	}

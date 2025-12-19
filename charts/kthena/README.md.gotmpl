@@ -1,8 +1,4 @@
 {{- if eq .Name "kthena" -}}
----
-title: Helm Chart Values
-sidebar_label: Helm Chart Values
----
 
 {{ template "chart.header" . }}
 {{ template "chart.description" . }}
@@ -12,10 +8,12 @@ sidebar_label: Helm Chart Values
 {{ template "chart.requirementsSection" . }}
 
 {{ template "chart.valuesSection" . }}
-{{- end -}}
+
 
 ## Notes
 
 - Values marked as “usually set by CI” are automatically updated during the release process; manual changes are not required.
 - For detailed information about each component, refer to the corresponding architecture and user guide documents.
 - Always review the [values.yaml](https://github.com/volcano-sh/kthena/blob/main/charts/kthena/values.yaml) file in the repository for the latest defaults and available options.
+
+{{- end -}}

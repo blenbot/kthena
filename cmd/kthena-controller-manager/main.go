@@ -69,7 +69,7 @@ func main() {
 	pflag.BoolVar(&cc.EnableLeaderElection, "leader-elect", false, "Enable leader election for controller. "+
 		"Enabling this will ensure there is only one active controller. Default is false.")
 	pflag.IntVar(&cc.Workers, "workers", 5, "number of workers to run. Default is 5")
-	pflag.StringVar(&controllers, "controllers", "*", "Comma-separated list of controllers to enable. Available: modelserving,modelbooster,autoscaler. "+
+	pflag.StringVar(&controllers, "controllers", "*", "Comma-separated list of controllers to enable. Available controllers: `modelserving`, `modelbooster`, `autoscaler`. "+
 		"If empty, all controllers are enabled.")
 	pflag.Parse()
 
@@ -246,33 +246,50 @@ func waitForCertsReady(keyFile, CertFile string) bool {
 }
 
 func parseControllers(controllers string) map[string]bool {
+	// defaultControllers defines all available controllers as enabled
 	defaultControllers := map[string]bool{
+		controller.ModelServingController: true,
+		controller.ModelBoosterController: true,
+		controller.AutoscalerController:   true,
+	}
+
+	// check for wildcard "*"
+	if strings.Contains(controllers, "*") {
+		parts := strings.Split(controllers, ",")
+		hasWildcardOnly := len(parts) == 1 && parts[0] == "*"
+		if !hasWildcardOnly {
+			// if "*" is used with other controllers, log a warning and use default configuration
+			klog.Warningf("Invalid controller configuration: when using '*', it must be the only value. Using default configuration (all controllers enabled).")
+		}
+		return defaultControllers
+	}
+
+	controllerList := strings.Split(controllers, ",")
+	hasChangedController := false
+
+	// Initialize resultControllers with all controllers disabled
+	resultControllers := map[string]bool{
 		controller.ModelServingController: false,
 		controller.ModelBoosterController: false,
 		controller.AutoscalerController:   false,
 	}
 
-	if strings.Contains(controllers, "*") {
-		parts := strings.Split(controllers, ",")
-		hasWildcardOnly := len(parts) == 1 && parts[0] == "*"
-		if !hasWildcardOnly {
-			klog.Warningf("Invalid controller configuration: when using '*', it must be the only value. Ignoring other values.")
-		}
-		// If only have "*", all Controllers will enabled
-		if controllers == "*" {
-			for k := range defaultControllers {
-				defaultControllers[k] = true
-			}
-			return defaultControllers
+	for _, ctrl := range controllerList {
+		ctrl = strings.TrimSpace(ctrl)
+
+		if _, ok := resultControllers[ctrl]; ok {
+			resultControllers[ctrl] = true
+			hasChangedController = true
+		} else if ctrl != "" {
+			klog.Warningf("Unknown controller %q specified, available controllers are: modelserving, modelbooster, autoscaler", ctrl)
 		}
 	}
-	// Specific Controllers enabled
-	for _, ctrl := range strings.Split(controllers, ",") {
-		if _, ok := defaultControllers[ctrl]; ok {
-			defaultControllers[ctrl] = true
-		} else {
-			klog.Warningf("unknown controller %q specified, available controllers are: modelserving, modelbooster, autoscaler", ctrl)
-		}
+
+	// If no valid controllers were specified, use default configuration
+	if !hasChangedController {
+		klog.Warningf("Invalid controller configuration detected. Using default configuration (all controllers enabled).")
+		return defaultControllers
 	}
-	return defaultControllers
+
+	return resultControllers
 }

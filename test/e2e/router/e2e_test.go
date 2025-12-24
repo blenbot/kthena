@@ -121,7 +121,6 @@ func TestModelRouteSimple(t *testing.T) {
 	utils.CheckChatCompletions(t, modelRoute.Spec.ModelName, messages)
 }
 
-
 func TestModelRouteMultiModels(t *testing.T) {
 	ctx := context.Background()
 
@@ -149,12 +148,14 @@ func TestModelRouteMultiModels(t *testing.T) {
 		resp := utils.CheckChatCompletionsWithHeaders(t, modelRoute.Spec.ModelName, messages, headers)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.NotEmpty(t, resp.Body)
+		assert.Contains(t, resp.Body, "DeepSeek-R1-Distill-Qwen-7B", "Expected response from 7B model")
 	})
 
 	t.Run("DefaultRequestsRouteTo1_5BModel", func(t *testing.T) {
 		resp := utils.CheckChatCompletions(t, modelRoute.Spec.ModelName, messages)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.NotEmpty(t, resp.Body)
+		assert.Contains(t, resp.Body, "DeepSeek-R1-Distill-Qwen-1.5B", "Expected response from 1.5B model")
 	})
 
 	t.Run("HeaderMatchingRulePriority", func(t *testing.T) {
@@ -162,6 +163,7 @@ func TestModelRouteMultiModels(t *testing.T) {
 		resp := utils.CheckChatCompletionsWithHeaders(t, modelRoute.Spec.ModelName, messages, headers)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.NotEmpty(t, resp.Body)
+		assert.Contains(t, resp.Body, "DeepSeek-R1-Distill-Qwen-7B", "Premium header should route to 7B model")
 	})
 
 	t.Run("DefaultBehaviorWhenNoRulesMatch", func(t *testing.T) {
@@ -169,6 +171,7 @@ func TestModelRouteMultiModels(t *testing.T) {
 		resp := utils.CheckChatCompletionsWithHeaders(t, modelRoute.Spec.ModelName, messages, headers)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.NotEmpty(t, resp.Body)
+		assert.Contains(t, resp.Body, "DeepSeek-R1-Distill-Qwen-1.5B", "Non-matching header should fall back to 1.5B model")
 	})
 
 	t.Run("EmptyHeaderValueFallsToDefault", func(t *testing.T) {
@@ -176,5 +179,6 @@ func TestModelRouteMultiModels(t *testing.T) {
 		resp := utils.CheckChatCompletionsWithHeaders(t, modelRoute.Spec.ModelName, messages, headers)
 		assert.Equal(t, 200, resp.StatusCode)
 		assert.NotEmpty(t, resp.Body)
+		assert.Contains(t, resp.Body, "DeepSeek-R1-Distill-Qwen-1.5B", "Empty header should fall back to 1.5B model")
 	})
 }

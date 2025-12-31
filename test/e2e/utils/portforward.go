@@ -42,7 +42,8 @@ func SetupPortForward(namespace, service, localPort, remotePort string) (func(),
 	// The error is expected if the process is killed during cleanup.
 	go func() {
 		if err := pfCmd.Wait(); err != nil {
-			// Ignore error as it's expected when the process is killed during cleanup
+			// Output error to make go lint pass. The error is expected when the process is killed during cleanup.
+			fmt.Printf("port-forward command exited: %v\n", err)
 		}
 	}()
 

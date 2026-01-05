@@ -61,6 +61,12 @@ const sidebars: SidebarsConfig = {
             'user-guide/rate-limit',
             "user-guide/gateway-api-support",
             'user-guide/gateway-inference-extension-support',
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Observability',
+          items: [
             'user-guide/router-observability',
           ],
         },

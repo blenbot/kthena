@@ -136,6 +136,28 @@ func (f *forwarder) Close() {
 	// opened by f.forwarder.ForwardPorts()
 }
 
+// startForwarder creates and starts a port forwarder with the given parameters.
+// This is a private helper function to avoid code duplication between SetupPortForward
+// and SetupPortForwardToPod.
+func startForwarder(namespace, podName string, localPort, podPort int) (PortForwarder, error) {
+	f := &forwarder{
+		stopCh:       make(chan struct{}),
+		podName:      podName,
+		namespace:    namespace,
+		localAddress: "127.0.0.1",
+		localPort:    localPort,
+		podPort:      podPort,
+	}
+
+	// Start the forwarder - this is a critical step, failure here means the test cannot proceed
+	if err := f.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start port-forward %s:%d -> %s/%s:%d: %v",
+			f.localAddress, localPort, namespace, podName, podPort, err)
+	}
+
+	return f, nil
+}
+
 // SetupPortForward sets up a port-forward to a service and waits for it to be ready.
 // It returns a PortForwarder interface that can be used to manage the port-forward.
 // If SetupPortForward fails, the test should stop immediately as the error indicates
@@ -168,23 +190,27 @@ func SetupPortForward(namespace, service, localPort, remotePort string) (PortFor
 		return nil, fmt.Errorf("invalid local port %q: %v", localPort, err)
 	}
 
-	// Create forwarder
-	f := &forwarder{
-		stopCh:       make(chan struct{}),
-		podName:      podName,
-		namespace:    namespace,
-		localAddress: "127.0.0.1",
-		localPort:    localPortInt,
-		podPort:      targetPort,
+	return startForwarder(namespace, podName, localPortInt, targetPort)
+}
+
+// SetupPortForwardToPod sets up a port-forward directly to a pod and waits for it to be ready.
+// It returns a PortForwarder interface that can be used to manage the port-forward.
+// If SetupPortForwardToPod fails, the test should stop immediately as the error indicates
+// a critical infrastructure issue that prevents the test from continuing.
+func SetupPortForwardToPod(namespace, podName, localPort, podPort string) (PortForwarder, error) {
+	// Parse local port
+	localPortInt, err := strconv.Atoi(localPort)
+	if err != nil {
+		return nil, fmt.Errorf("invalid local port %q: %v", localPort, err)
 	}
 
-	// Start the forwarder - this is a critical step, failure here means the test cannot proceed
-	if err := f.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start port-forward %s:%d -> %s/%s:%d: %v",
-			f.localAddress, localPortInt, namespace, podName, targetPort, err)
+	// Parse pod port
+	podPortInt, err := strconv.Atoi(podPort)
+	if err != nil {
+		return nil, fmt.Errorf("invalid pod port %q: %v", podPort, err)
 	}
 
-	return f, nil
+	return startForwarder(namespace, podName, localPortInt, podPortInt)
 }
 
 // findPodForService finds a running pod for the given service and gets the targetPort

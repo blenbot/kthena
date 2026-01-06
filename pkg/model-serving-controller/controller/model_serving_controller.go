@@ -447,7 +447,7 @@ func (c *ModelServingController) syncModelServing(ctx context.Context, key strin
 		return fmt.Errorf("cannot manage ServingGroup rollingUpdate: %v", err)
 	}
 
-	if err := c.managerHeadlessService(ctx, mi); err != nil {
+	if err := c.manageHeadlessService(ctx, mi); err != nil {
 		return fmt.Errorf("cannot manage ModelServing: %v", err)
 	}
 
@@ -1180,7 +1180,7 @@ func (c *ModelServingController) scaleDownServingGroups(ctx context.Context, mi 
 	return nil
 }
 
-func (c *ModelServingController) managerHeadlessService(ctx context.Context, mi *workloadv1alpha1.ModelServing) error {
+func (c *ModelServingController) manageHeadlessService(ctx context.Context, mi *workloadv1alpha1.ModelServing) error {
 	servingGroups, err := c.store.GetServingGroupByModelServing(utils.GetNamespaceName(mi))
 	if err != nil && !errors.Is(err, datastore.ErrServingGroupNotFound) {
 		return fmt.Errorf("cannot get servingGroups: %v", err)
@@ -1243,18 +1243,6 @@ func (c *ModelServingController) CreatePodsByRole(ctx context.Context, role work
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("failed to create entry pod %s: %v", entryPod.Name, err)
 	}
-
-	// serviceSelector := map[string]string{
-	// 	workloadv1alpha1.GroupNameLabelKey: servingGroupName,
-	// 	workloadv1alpha1.RoleLabelKey:      role.Name,
-	// 	workloadv1alpha1.RoleIDKey:         utils.GenerateRoleID(role.Name, roleIndex),
-	// 	workloadv1alpha1.EntryLabelKey:     utils.Entry,
-	// }
-	// if role.WorkerTemplate != nil {
-	// 	if err := utils.CreateHeadlessService(ctx, c.kubeClientSet, mi, serviceSelector, servingGroupName, role.Name, roleIndex); err != nil {
-	// 		return fmt.Errorf("failed to create headless service: %v", err)
-	// 	}
-	// }
 
 	for i := 1; i <= int(role.WorkerReplicas); i++ {
 		workerPod := utils.GenerateWorkerPod(role, mi, entryPod, servingGroupName, roleIndex, i, revision)

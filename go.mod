@@ -40,7 +40,7 @@ require (
 	sigs.k8s.io/lws v0.7.0
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0
 	sigs.k8s.io/yaml v1.6.0
-	volcano.sh/apis v1.12.1
+	volcano.sh/apis v1.13.2-0.20260105020123-deb066235db8
 )
 
 require (

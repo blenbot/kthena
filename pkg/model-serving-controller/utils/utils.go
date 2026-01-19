@@ -558,16 +558,3 @@ func GetMaxUnavailable(mi *workloadv1alpha1.ModelServing) (int, error) {
 	replicas := int(*mi.Spec.Replicas)
 	return intstr.GetScaledValueFromIntOrPercent(&maxUnavailable, replicas, true)
 }
-
-func GetMaxSurge(mi *workloadv1alpha1.ModelServing) (int, error) {
-	maxSurge := intstr.FromInt(0)
-	if mi.Spec.RolloutStrategy != nil && mi.Spec.RolloutStrategy.RollingUpdateConfiguration != nil {
-		if mi.Spec.RolloutStrategy.RollingUpdateConfiguration.MaxSurge.IntVal != 0 ||
-			mi.Spec.RolloutStrategy.RollingUpdateConfiguration.MaxSurge.StrVal != "" {
-			maxSurge = mi.Spec.RolloutStrategy.RollingUpdateConfiguration.MaxSurge
-		}
-	}
-	// Calculate maxUnavailable and maxSurge as absolute numbers
-	replicas := int(*mi.Spec.Replicas)
-	return intstr.GetScaledValueFromIntOrPercent(&maxSurge, replicas, true)
-}

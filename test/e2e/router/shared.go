@@ -18,6 +18,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -839,4 +840,167 @@ func TestModelRouteLoraShared(t *testing.T, testCtx *routercontext.RouterTestCon
 	utils.UnloadLoRAAdapter(t, "http://127.0.0.1:9000", "lora-A")
 	utils.UnloadLoRAAdapter(t, "http://127.0.0.1:9000", "lora-B")
 	t.Log("LoRA adapters unloaded successfully")
+}
+
+// TestMetricsShared is a shared test function that can be used by both
+// router and gateway-api test suites. When useGatewayAPI is true, it configures ModelRoute
+// with ParentRefs to the default Gateway.
+func TestMetricsShared(t *testing.T, testCtx *routercontext.RouterTestContext, testNamespace string, useGatewayAPI bool, kthenaNamespace string) {
+	ctx := context.Background()
+
+	routerNamespace := kthenaNamespace
+	if routerNamespace == "" {
+		routerNamespace = "kthena-system"
+	}
+
+	// Setup port-forward to router pod for metrics endpoint
+	routerPod := utils.GetRouterPod(t, testCtx.KubeClient, routerNamespace)
+	pf, err := utils.SetupPortForwardToPod(routerNamespace, routerPod.Name, "9090", "8080")
+	require.NoError(t, err, "Failed to setup port-forward to router")
+	defer pf.Close()
+
+	// Deploy ModelRoute
+	t.Log("Deploying ModelRoute...")
+	modelRoute := utils.LoadYAMLFromFile[networkingv1alpha1.ModelRoute]("examples/kthena-router/ModelRouteSimple.yaml")
+	modelRoute.Namespace = testNamespace
+
+	setupModelRouteWithGatewayAPI(modelRoute, useGatewayAPI, kthenaNamespace)
+
+	createdModelRoute, err := testCtx.KthenaClient.NetworkingV1alpha1().ModelRoutes(testNamespace).Create(ctx, modelRoute, metav1.CreateOptions{})
+	require.NoError(t, err, "Failed to create ModelRoute")
+	assert.NotNil(t, createdModelRoute)
+	t.Logf("Created ModelRoute: %s/%s", createdModelRoute.Namespace, createdModelRoute.Name)
+
+	t.Cleanup(func() {
+		cleanupCtx := context.Background()
+		t.Logf("Cleaning up ModelRoute: %s/%s", createdModelRoute.Namespace, createdModelRoute.Name)
+		if err := testCtx.KthenaClient.NetworkingV1alpha1().ModelRoutes(testNamespace).Delete(cleanupCtx, createdModelRoute.Name, metav1.DeleteOptions{}); err != nil {
+			t.Logf("Warning: Failed to delete ModelRoute %s/%s: %v", createdModelRoute.Namespace, createdModelRoute.Name, err)
+		}
+	})
+
+	fetchMetrics := func() string {
+		resp, err := http.Get("http://127.0.0.1:9090/metrics")
+		require.NoError(t, err, "Failed to fetch metrics")
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "Failed to read metrics response")
+		return string(body)
+	}
+
+	messages := []utils.ChatMessage{
+		utils.NewChatMessage("user", "Hello"),
+	}
+
+	t.Run("VerifyRequestCountMetrics", func(t *testing.T) {
+		for i := 0; i < 3; i++ {
+			resp := utils.CheckChatCompletions(t, modelRoute.Spec.ModelName, messages)
+			assert.Equal(t, 200, resp.StatusCode)
+		}
+
+		time.Sleep(2 * time.Second)
+
+		metricsBody := fetchMetrics()
+
+		assert.Contains(t, metricsBody, "kthena_router_requests_total", "Request count metric should exist")
+		assert.Contains(t, metricsBody, fmt.Sprintf(`model="%s"`, modelRoute.Spec.ModelName), "Metric should have model label")
+		assert.Contains(t, metricsBody, `status_code="200"`, "Metric should have successful status code")
+	})
+
+	t.Run("VerifyLatencyMetrics", func(t *testing.T) {
+		resp := utils.CheckChatCompletions(t, modelRoute.Spec.ModelName, messages)
+		assert.Equal(t, 200, resp.StatusCode)
+
+		time.Sleep(2 * time.Second)
+
+		metricsBody := fetchMetrics()
+
+		assert.Contains(t, metricsBody, "kthena_router_request_duration_seconds", "Duration histogram should exist")
+	})
+
+	t.Run("VerifyErrorMetrics", func(t *testing.T) {
+		resp := utils.CheckChatCompletions(t, "non-existent-model-xyz", messages)
+		assert.Equal(t, 404, resp.StatusCode)
+
+		time.Sleep(2 * time.Second)
+
+		metricsBody := fetchMetrics()
+
+		assert.Contains(t, metricsBody, `status_code="404"`, "Error responses should be tracked")
+	})
+}
+
+// TestRateLimitMetricsShared is a shared test function that can be used by both
+// router and gateway-api test suites. When useGatewayAPI is true, it configures ModelRoute
+// with ParentRefs to the default Gateway.
+func TestRateLimitMetricsShared(t *testing.T, testCtx *routercontext.RouterTestContext, testNamespace string, useGatewayAPI bool, kthenaNamespace string) {
+	ctx := context.Background()
+
+	routerNamespace := kthenaNamespace
+	if routerNamespace == "" {
+		routerNamespace = "kthena-system"
+	}
+
+	// Setup port-forward to router pod for metrics endpoint
+	routerPod := utils.GetRouterPod(t, testCtx.KubeClient, routerNamespace)
+	pf, err := utils.SetupPortForwardToPod(routerNamespace, routerPod.Name, "9091", "8080")
+	require.NoError(t, err, "Failed to setup port-forward to router")
+	defer pf.Close()
+
+	// Deploy ModelRoute with rate limiting
+	t.Log("Deploying ModelRoute with rate limiting...")
+	modelRoute := utils.LoadYAMLFromFile[networkingv1alpha1.ModelRoute]("examples/kthena-router/ModelRouteWithRateLimit.yaml")
+	modelRoute.Namespace = testNamespace
+
+	setupModelRouteWithGatewayAPI(modelRoute, useGatewayAPI, kthenaNamespace)
+
+	createdModelRoute, err := testCtx.KthenaClient.NetworkingV1alpha1().ModelRoutes(testNamespace).Create(ctx, modelRoute, metav1.CreateOptions{})
+	require.NoError(t, err, "Failed to create ModelRoute")
+	assert.NotNil(t, createdModelRoute)
+	t.Logf("Created ModelRoute: %s/%s", createdModelRoute.Namespace, createdModelRoute.Name)
+
+	t.Cleanup(func() {
+		cleanupCtx := context.Background()
+		t.Logf("Cleaning up ModelRoute: %s/%s", createdModelRoute.Namespace, createdModelRoute.Name)
+		if err := testCtx.KthenaClient.NetworkingV1alpha1().ModelRoutes(testNamespace).Delete(cleanupCtx, createdModelRoute.Name, metav1.DeleteOptions{}); err != nil {
+			t.Logf("Warning: Failed to delete ModelRoute %s/%s: %v", createdModelRoute.Namespace, createdModelRoute.Name, err)
+		}
+	})
+
+	// Wait for rate limiter to be configured
+	time.Sleep(3 * time.Second)
+
+	fetchMetrics := func() string {
+		resp, err := http.Get("http://127.0.0.1:9091/metrics")
+		require.NoError(t, err, "Failed to fetch metrics")
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, "Failed to read metrics response")
+		return string(body)
+	}
+
+	t.Run("VerifyRateLimitExceededMetrics", func(t *testing.T) {
+		messages := []utils.ChatMessage{
+			utils.NewChatMessage("user", "This is a test message with many tokens to trigger rate limiting quickly"),
+		}
+
+		var rateLimitedCount int
+		for i := 0; i < 5; i++ {
+			resp := utils.CheckChatCompletions(t, modelRoute.Spec.ModelName, messages)
+			if resp.StatusCode == 429 {
+				rateLimitedCount++
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		t.Logf("Requests that were rate-limited: %d", rateLimitedCount)
+
+		time.Sleep(2 * time.Second)
+
+		metricsBody := fetchMetrics()
+
+		if rateLimitedCount > 0 {
+			assert.Contains(t, metricsBody, "kthena_router_rate_limit_exceeded_total", "Rate limit exceeded metric should exist")
+		}
+	})
 }

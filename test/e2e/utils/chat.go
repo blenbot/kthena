@@ -184,6 +184,31 @@ func min(a, b time.Duration) time.Duration {
 	return b
 }
 
+// WaitForRouterReady polls the router until it can successfully route requests.
+// This handles router reconciliation time without consuming rate-limited tokens.
+func WaitForRouterReady(t *testing.T, modelName string, messages []ChatMessage) {
+	maxAttempts := 20
+	backoff := 1 * time.Second
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		resp := SendChatRequestWithURL(t, DefaultRouterURL, modelName, messages)
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			t.Logf("Router is ready for model '%s' (attempt %d/%d)", modelName, attempt+1, maxAttempts)
+			return
+		}
+
+		if attempt < maxAttempts-1 {
+			t.Logf("Router not ready yet (attempt %d/%d, status %d), retrying in %v...",
+				attempt+1, maxAttempts, resp.StatusCode, backoff)
+			time.Sleep(backoff)
+		}
+	}
+
+	t.Fatalf("Router not ready after %d attempts for model '%s'", maxAttempts, modelName)
+}
+
 // NewChatMessage creates a new chat message
 func NewChatMessage(role, content string) ChatMessage {
 	return ChatMessage{

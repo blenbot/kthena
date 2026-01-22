@@ -492,12 +492,13 @@ func TestModelRouteWithRateLimitShared(t *testing.T, testCtx *routercontext.Rout
 			return err == nil && mr != nil
 		}, 2*time.Minute, 2*time.Second, "ModelRoute should be created")
 
-		// Wait for router to reconcile resources using base ModelServer (no rate limits)
-		modelServerName := createdModelRoute.Spec.Rules[0].TargetModels[0].ModelServerName
-		utils.CheckChatCompletions(t, modelServerName, standardMessage)
+		// Wait for router to reconcile (consumes ~10 tokens from our quota)
+		utils.WaitForRouterReady(t, createdModelRoute.Spec.ModelName, standardMessage)
+		t.Logf("Router ready (consumed ~%d/%d tokens for readiness check)", tokensPerRequest, inputTokenLimit)
 
-		// Calculate expected successful requests
-		expectedSuccessfulRequests := inputTokenLimit / tokensPerRequest
+		// Calculate expected successful requests, accounting for readiness check
+		remainingQuota := inputTokenLimit - tokensPerRequest            // 30 - 10 = 20
+		expectedSuccessfulRequests := remainingQuota / tokensPerRequest // 20 / 10 = 2
 		if expectedSuccessfulRequests == 0 {
 			t.Fatalf("Invalid test configuration: inputTokenLimit (%d) / tokensPerRequest (%d) = 0",
 				inputTokenLimit, tokensPerRequest)
@@ -554,8 +555,13 @@ func TestModelRouteWithRateLimitShared(t *testing.T, testCtx *routercontext.Rout
 			return err == nil && mr != nil
 		}, 2*time.Minute, 2*time.Second, "ModelRoute should be created")
 
-		// Exhaust quota to ensure rate limit is active
-		expectedSuccessfulRequests := inputTokenLimit / tokensPerRequest
+		// Wait for router to reconcile (consumes ~10 tokens from our quota)
+		utils.WaitForRouterReady(t, createdModelRoute.Spec.ModelName, standardMessage)
+		t.Logf("Router ready (consumed ~%d/%d tokens for readiness check)", tokensPerRequest, inputTokenLimit)
+
+		// Exhaust remaining quota to ensure rate limit is active
+		remainingQuota := inputTokenLimit - tokensPerRequest            // 30 - 10 = 20
+		expectedSuccessfulRequests := remainingQuota / tokensPerRequest // 20 / 10 = 2
 		for i := 0; i < expectedSuccessfulRequests; i++ {
 			resp := utils.SendChatRequest(t, createdModelRoute.Spec.ModelName, standardMessage)
 			resp.Body.Close()
@@ -614,8 +620,13 @@ func TestModelRouteWithRateLimitShared(t *testing.T, testCtx *routercontext.Rout
 			return err == nil && mr != nil
 		}, 2*time.Minute, 2*time.Second, "ModelRoute should be created")
 
-		// Consume the quota
-		expectedSuccessfulRequests := inputTokenLimit / tokensPerRequest
+		// Wait for router to reconcile (consumes ~10 tokens from our quota)
+		utils.WaitForRouterReady(t, createdModelRoute.Spec.ModelName, standardMessage)
+		t.Logf("Router ready (consumed ~%d/%d tokens for readiness check)", tokensPerRequest, inputTokenLimit)
+
+		// Consume the remaining quota
+		remainingQuota := inputTokenLimit - tokensPerRequest            // 30 - 10 = 20
+		expectedSuccessfulRequests := remainingQuota / tokensPerRequest // 20 / 10 = 2
 		for i := 0; i < expectedSuccessfulRequests; i++ {
 			resp := utils.SendChatRequest(t, createdModelRoute.Spec.ModelName, standardMessage)
 			resp.Body.Close()

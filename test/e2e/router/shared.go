@@ -862,17 +862,6 @@ func TestModelRouteLoraShared(t *testing.T, testCtx *routercontext.RouterTestCon
 func TestMetricsShared(t *testing.T, testCtx *routercontext.RouterTestContext, testNamespace string, useGatewayAPI bool, kthenaNamespace string) {
 	ctx := context.Background()
 
-	routerNamespace := kthenaNamespace
-	if routerNamespace == "" {
-		routerNamespace = "kthena-system"
-	}
-
-	// Setup port-forward to router pod for metrics endpoint
-	routerPod := utils.GetRouterPod(t, testCtx.KubeClient, routerNamespace)
-	pf, err := utils.SetupPortForwardToPod(routerNamespace, routerPod.Name, "9090", "8080")
-	require.NoError(t, err, "Failed to setup port-forward to router")
-	defer pf.Close()
-
 	// Deploy ModelRoute
 	t.Log("Deploying ModelRoute...")
 	modelRoute := utils.LoadYAMLFromFile[networkingv1alpha1.ModelRoute]("examples/kthena-router/ModelRouteSimple.yaml")
@@ -894,7 +883,7 @@ func TestMetricsShared(t *testing.T, testCtx *routercontext.RouterTestContext, t
 	})
 
 	fetchMetrics := func() string {
-		resp, err := http.Get("http://127.0.0.1:9090/metrics")
+		resp, err := http.Get("http://127.0.0.1:8080/metrics")
 		require.NoError(t, err, "Failed to fetch metrics")
 		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
@@ -912,37 +901,33 @@ func TestMetricsShared(t *testing.T, testCtx *routercontext.RouterTestContext, t
 			assert.Equal(t, 200, resp.StatusCode)
 		}
 
-		time.Sleep(2 * time.Second)
-
-		metricsBody := fetchMetrics()
-
-		assert.Contains(t, metricsBody, "kthena_router_requests_total", "Request count metric should exist")
-		assert.Contains(t, metricsBody, fmt.Sprintf(`model="%s"`, modelRoute.Spec.ModelName), "Metric should have model label")
-		assert.Contains(t, metricsBody, `status_code="200"`, "Metric should have successful status code")
+		require.Eventually(t, func() bool {
+			metricsBody := fetchMetrics()
+			return strings.Contains(metricsBody, "kthena_router_requests_total") &&
+				strings.Contains(metricsBody, fmt.Sprintf(`model="%s"`, modelRoute.Spec.ModelName)) &&
+				strings.Contains(metricsBody, `status_code="200"`)
+		}, 15*time.Second, time.Second, "Expected metrics for successful requests were not found in time")
 	})
 
 	t.Run("VerifyLatencyMetrics", func(t *testing.T) {
 		resp := utils.CheckChatCompletions(t, modelRoute.Spec.ModelName, messages)
 		assert.Equal(t, 200, resp.StatusCode)
 
-		time.Sleep(2 * time.Second)
-
-		metricsBody := fetchMetrics()
-
-		assert.Contains(t, metricsBody, "kthena_router_request_duration_seconds", "Duration histogram should exist")
+		require.Eventually(t, func() bool {
+			metricsBody := fetchMetrics()
+			return strings.Contains(metricsBody, "kthena_router_request_duration_seconds")
+		}, 15*time.Second, time.Second, "Duration histogram metric was not found in time")
 	})
 
 	t.Run("VerifyErrorMetrics", func(t *testing.T) {
-		// SendChatRequest without retry since we expect 404 for non-existent model
 		resp := utils.SendChatRequest(t, "non-existent-model-xyz", messages)
 		defer resp.Body.Close()
 		assert.Equal(t, 404, resp.StatusCode)
 
-		time.Sleep(2 * time.Second)
-
-		metricsBody := fetchMetrics()
-
-		assert.Contains(t, metricsBody, `model="non-existent-model-xyz"`, "Error model should be tracked in metrics")
+		require.Eventually(t, func() bool {
+			metricsBody := fetchMetrics()
+			return strings.Contains(metricsBody, `model="non-existent-model-xyz"`)
+		}, 15*time.Second, time.Second, "Error model metric was not found in time")
 	})
 }
 
@@ -951,17 +936,6 @@ func TestMetricsShared(t *testing.T, testCtx *routercontext.RouterTestContext, t
 // with ParentRefs to the default Gateway.
 func TestRateLimitMetricsShared(t *testing.T, testCtx *routercontext.RouterTestContext, testNamespace string, useGatewayAPI bool, kthenaNamespace string) {
 	ctx := context.Background()
-
-	routerNamespace := kthenaNamespace
-	if routerNamespace == "" {
-		routerNamespace = "kthena-system"
-	}
-
-	// Setup port-forward to router pod for metrics endpoint
-	routerPod := utils.GetRouterPod(t, testCtx.KubeClient, routerNamespace)
-	pf, err := utils.SetupPortForwardToPod(routerNamespace, routerPod.Name, "9091", "8080")
-	require.NoError(t, err, "Failed to setup port-forward to router")
-	defer pf.Close()
 
 	// Deploy ModelRoute with rate limiting
 	t.Log("Deploying ModelRoute with rate limiting...")
@@ -983,11 +957,8 @@ func TestRateLimitMetricsShared(t *testing.T, testCtx *routercontext.RouterTestC
 		}
 	})
 
-	// Wait for rate limiter to be configured
-	time.Sleep(3 * time.Second)
-
 	fetchMetrics := func() string {
-		resp, err := http.Get("http://127.0.0.1:9091/metrics")
+		resp, err := http.Get("http://127.0.0.1:8080/metrics")
 		require.NoError(t, err, "Failed to fetch metrics")
 		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
@@ -1019,11 +990,10 @@ func TestRateLimitMetricsShared(t *testing.T, testCtx *routercontext.RouterTestC
 
 		t.Logf("Requests: %d successful, %d rate-limited", successCount, rateLimitedCount)
 
-		time.Sleep(2 * time.Second)
-
-		metricsBody := fetchMetrics()
-
-		assert.Contains(t, metricsBody, "kthena_router_rate_limit_exceeded_total", "Rate limit exceeded metric should exist")
-		assert.Contains(t, metricsBody, fmt.Sprintf(`model="%s"`, modelRoute.Spec.ModelName), "Metric should have model label")
+		require.Eventually(t, func() bool {
+			metricsBody := fetchMetrics()
+			return strings.Contains(metricsBody, "kthena_router_rate_limit_exceeded_total") &&
+				strings.Contains(metricsBody, fmt.Sprintf(`model="%s"`, modelRoute.Spec.ModelName))
+		}, 15*time.Second, time.Second, "Rate limit exceeded metrics were not found in time")
 	})
 }

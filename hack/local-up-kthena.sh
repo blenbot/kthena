@@ -101,6 +101,10 @@ Customize helm release name:
 Cleanup all installation:
 
     ./hack/local-up-kthena.sh -q
+
+Run preflight checks only (without deploying):
+
+    ./hack/local-up-kthena.sh --check-only
 "
   exit 0
 fi
@@ -111,9 +115,18 @@ if [[ $? -eq 0 ]]; then
   exit 0
 fi
 
+# Check for --check-only flag
+echo $* | grep -E -q "\-\-check-only"
+if [[ $? -eq 0 ]]; then
+  source "${KT_ROOT}/hack/lib/install.sh"
+  check-prerequisites
+  exit $?
+fi
+
 source "${KT_ROOT}/hack/lib/install.sh"
 
-check-prerequisites
+# Run preflight checks (will exit with error if fatal issues found)
+check-prerequisites || exit 1
 
 prepare
 

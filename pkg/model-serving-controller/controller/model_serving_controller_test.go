@@ -36,6 +36,7 @@ import (
 	kubefake "k8s.io/client-go/kubernetes/fake"
 	kubetesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	schedulingv1beta1 "volcano.sh/apis/pkg/apis/scheduling/v1beta1"
 	volcanofake "volcano.sh/apis/pkg/client/clientset/versioned/fake"
@@ -5125,6 +5126,7 @@ func TestUpdateModelServingWithNilGangPolicy(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 func TestDeleteRoleRollbackOnFailure(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -5170,10 +5172,113 @@ func TestDeleteRoleRollbackOnFailure(t *testing.T) {
 			expectedFinalStatus:  datastore.RoleNotFound,
 			expectEnqueueCalled:  true,
 			description:          "pod API error, should re-enqueue",
+=======
+// TestHandleReadyPodRoleStatusUpdate tests that handleReadyPod correctly updates
+// role status to Running when all pods in the role are ready.
+// This tests the fix for the bug where role status was never set to RoleRunning,
+// which broke the scale-down priority protection for healthy roles.
+func TestHandleReadyPodRoleStatusUpdate(t *testing.T) {
+	ns := "default"
+	msName := "test-ms"
+	groupName := "test-ms-0"
+	roleName := "prefill"
+	roleID := "prefill-0"
+	revision := "hash123"
+
+	tests := []struct {
+		description        string
+		workerReplicas     int32
+		existingPods       []struct {
+			name     string
+			isReady  bool
+			isEntry  bool
+			workerID int // 0 for entry, 1+ for workers
+		}
+		newPodIsEntry      bool
+		newPodWorkerID     int
+		initialRoleStatus  datastore.RoleStatus
+		expectedRoleStatus datastore.RoleStatus
+	}{
+		{
+			description:        "single entry pod becomes ready - role should transition to Running",
+			workerReplicas:     0,
+			existingPods:       []struct{ name string; isReady bool; isEntry bool; workerID int }{},
+			newPodIsEntry:      true,
+			newPodWorkerID:     0,
+			initialRoleStatus:  datastore.RoleCreating,
+			expectedRoleStatus: datastore.RoleRunning,
+		},
+		{
+			description:    "entry pod ready but workers not ready - role should stay Creating",
+			workerReplicas: 2,
+			existingPods: []struct{ name string; isReady bool; isEntry bool; workerID int }{
+				{name: groupName + "-" + roleName + "-1", isReady: false, isEntry: false, workerID: 1},
+				{name: groupName + "-" + roleName + "-2", isReady: false, isEntry: false, workerID: 2},
+			},
+			newPodIsEntry:      true,
+			newPodWorkerID:     0,
+			initialRoleStatus:  datastore.RoleCreating,
+			expectedRoleStatus: datastore.RoleCreating,
+		},
+		{
+			description:    "all pods ready including new worker - role should transition to Running",
+			workerReplicas: 2,
+			existingPods: []struct{ name string; isReady bool; isEntry bool; workerID int }{
+				{name: groupName + "-" + roleName + "-0", isReady: true, isEntry: true, workerID: 0},
+				{name: groupName + "-" + roleName + "-1", isReady: true, isEntry: false, workerID: 1},
+			},
+			newPodIsEntry:      false,
+			newPodWorkerID:     2,
+			initialRoleStatus:  datastore.RoleCreating,
+			expectedRoleStatus: datastore.RoleRunning,
+		},
+		{
+			description:    "last worker becomes ready - role should transition to Running",
+			workerReplicas: 1,
+			existingPods: []struct{ name string; isReady bool; isEntry bool; workerID int }{
+				{name: groupName + "-" + roleName + "-0", isReady: true, isEntry: true, workerID: 0},
+			},
+			newPodIsEntry:      false,
+			newPodWorkerID:     1,
+			initialRoleStatus:  datastore.RoleCreating,
+			expectedRoleStatus: datastore.RoleRunning,
+		},
+		{
+			description:        "role already Running - should stay Running",
+			workerReplicas:     0,
+			existingPods:       []struct{ name string; isReady bool; isEntry bool; workerID int }{},
+			newPodIsEntry:      true,
+			newPodWorkerID:     0,
+			initialRoleStatus:  datastore.RoleRunning,
+			expectedRoleStatus: datastore.RoleRunning,
+		},
+		{
+			description:        "role in Deleting state - should not change to Running",
+			workerReplicas:     0,
+			existingPods:       []struct{ name string; isReady bool; isEntry bool; workerID int }{},
+			newPodIsEntry:      true,
+			newPodWorkerID:     0,
+			initialRoleStatus:  datastore.RoleDeleting,
+			expectedRoleStatus: datastore.RoleDeleting,
+		},
+		{
+			description:    "one of multiple workers still not ready - role should stay Creating",
+			workerReplicas: 3,
+			existingPods: []struct{ name string; isReady bool; isEntry bool; workerID int }{
+				{name: groupName + "-" + roleName + "-0", isReady: true, isEntry: true, workerID: 0},
+				{name: groupName + "-" + roleName + "-1", isReady: true, isEntry: false, workerID: 1},
+				{name: groupName + "-" + roleName + "-3", isReady: false, isEntry: false, workerID: 3}, // not ready
+			},
+			newPodIsEntry:      false,
+			newPodWorkerID:     2,
+			initialRoleStatus:  datastore.RoleCreating,
+			expectedRoleStatus: datastore.RoleCreating,
+>>>>>>> b95c2df (Fix role status never transitioning to Running)
 		},
 	}
 
 	for _, tt := range tests {
+<<<<<<< HEAD
 		t.Run(tt.name, func(t *testing.T) {
 			client := kubefake.NewSimpleClientset()
 			kthenaClient := kthenafake.NewSimpleClientset()
@@ -5242,10 +5347,59 @@ func TestDeleteRoleRollbackOnFailure(t *testing.T) {
 						workloadv1alpha1.GroupNameLabelKey: groupName,
 						workloadv1alpha1.RoleLabelKey:      roleName,
 						workloadv1alpha1.RoleIDKey:         roleID,
+=======
+		t.Run(tt.description, func(t *testing.T) {
+			// Setup fake clients
+			kubeClient := kubefake.NewSimpleClientset()
+
+			// Create informer factory
+			kubeInformerFactory := informers.NewSharedInformerFactory(kubeClient, 0)
+			podInformer := kubeInformerFactory.Core().V1().Pods()
+			serviceInformer := kubeInformerFactory.Core().V1().Services()
+
+			err := podInformer.Informer().AddIndexers(cache.Indexers{
+				GroupNameKey: utils.GroupNameIndexFunc,
+				RoleIDKey:    utils.RoleIDIndexFunc,
+			})
+			assert.NoError(t, err)
+
+			err = serviceInformer.Informer().AddIndexers(cache.Indexers{
+				GroupNameKey: utils.GroupNameIndexFunc,
+				RoleIDKey:    utils.RoleIDIndexFunc,
+			})
+			assert.NoError(t, err)
+
+			// Create store and add initial role status
+			store := datastore.New()
+
+			// Create ModelServing
+			ms := &workloadv1alpha1.ModelServing{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: ns,
+					Name:      msName,
+					UID:       "test-ms-uid",
+				},
+				Spec: workloadv1alpha1.ModelServingSpec{
+					Replicas: ptr.To[int32](1),
+					Template: workloadv1alpha1.ServingGroup{
+						Roles: []workloadv1alpha1.Role{
+							{
+								Name:           roleName,
+								Replicas:       ptr.To[int32](1),
+								WorkerReplicas: tt.workerReplicas,
+								EntryTemplate: workloadv1alpha1.PodTemplateSpec{
+									Spec: corev1.PodSpec{
+										Containers: []corev1.Container{{Name: "main", Image: "nginx"}},
+									},
+								},
+							},
+						},
+>>>>>>> b95c2df (Fix role status never transitioning to Running)
 					},
 				},
 			}
 
+<<<<<<< HEAD
 			service := &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-service",
@@ -5459,6 +5613,139 @@ func TestDeleteServingGroupRollbackOnFailure(t *testing.T) {
 			} else {
 				assert.Equal(t, 0, queueLen, "should not have enqueued for reconcile")
 			}
+=======
+			// Create controller with workqueue
+			controller := &ModelServingController{
+				kubeClientSet:    kubeClient,
+				podsInformer:     podInformer.Informer(),
+				podsLister:       podInformer.Lister(),
+				servicesInformer: serviceInformer.Informer(),
+				servicesLister:   serviceInformer.Lister(),
+				store:            store,
+				workqueue:        workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+			}
+
+			// Start informers
+			stop := make(chan struct{})
+			defer close(stop)
+			kubeInformerFactory.Start(stop)
+			kubeInformerFactory.WaitForCacheSync(stop)
+
+			podIndexer := podInformer.Informer().GetIndexer()
+
+			// Add existing pods to indexer
+			for _, existingPod := range tt.existingPods {
+				pod := &corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: ns,
+						Name:      existingPod.name,
+						Labels: map[string]string{
+							workloadv1alpha1.ModelServingNameLabelKey: msName,
+							workloadv1alpha1.GroupNameLabelKey:        groupName,
+							workloadv1alpha1.RoleLabelKey:             roleName,
+							workloadv1alpha1.RoleIDKey:                roleID,
+							workloadv1alpha1.RevisionLabelKey:         revision,
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion: workloadv1alpha1.GroupVersion.String(),
+								Kind:       "ModelServing",
+								Name:       msName,
+								UID:        ms.UID,
+							},
+						},
+					},
+					Status: corev1.PodStatus{
+						Phase: corev1.PodRunning,
+					},
+				}
+				if existingPod.isEntry {
+					pod.Labels[workloadv1alpha1.EntryLabelKey] = utils.Entry
+				}
+				if existingPod.isReady {
+					pod.Status.Conditions = []corev1.PodCondition{
+						{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+					}
+				}
+				err := podIndexer.Add(pod)
+				assert.NoError(t, err)
+
+				// Add to store's running pods
+				store.AddRunningPodToServingGroup(
+					types.NamespacedName{Namespace: ns, Name: msName},
+					groupName, pod.Name, revision, roleName, roleID,
+				)
+			}
+
+			// Set initial role status if role exists in store
+			if tt.initialRoleStatus != datastore.RoleNotFound {
+				// Ensure the role exists in the store first
+				store.AddServingGroupAndRole(
+					types.NamespacedName{Namespace: ns, Name: msName},
+					groupName, revision, roleName, roleID,
+				)
+				err = store.UpdateRoleStatus(
+					types.NamespacedName{Namespace: ns, Name: msName},
+					groupName, roleName, roleID, tt.initialRoleStatus,
+				)
+				assert.NoError(t, err)
+			}
+
+			// Create the new pod that triggers handleReadyPod
+			var newPodName string
+			if tt.newPodIsEntry {
+				newPodName = groupName + "-" + roleName + "-0"
+			} else {
+				newPodName = fmt.Sprintf("%s-%s-%d", groupName, roleName, tt.newPodWorkerID)
+			}
+
+			newPod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: ns,
+					Name:      newPodName,
+					Labels: map[string]string{
+						workloadv1alpha1.ModelServingNameLabelKey: msName,
+						workloadv1alpha1.GroupNameLabelKey:        groupName,
+						workloadv1alpha1.RoleLabelKey:             roleName,
+						workloadv1alpha1.RoleIDKey:                roleID,
+						workloadv1alpha1.RevisionLabelKey:         revision,
+					},
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: workloadv1alpha1.GroupVersion.String(),
+							Kind:       "ModelServing",
+							Name:       msName,
+							UID:        ms.UID,
+						},
+					},
+				},
+				Status: corev1.PodStatus{
+					Phase: corev1.PodRunning,
+					Conditions: []corev1.PodCondition{
+						{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+					},
+				},
+			}
+			if tt.newPodIsEntry {
+				newPod.Labels[workloadv1alpha1.EntryLabelKey] = utils.Entry
+			}
+
+			// Add new pod to indexer
+			err = podIndexer.Add(newPod)
+			assert.NoError(t, err)
+
+			// Call handleReadyPod
+			err = controller.handleReadyPod(ms, groupName, newPod)
+			assert.NoError(t, err)
+
+			// Verify role status
+			actualRoleStatus := store.GetRoleStatus(
+				types.NamespacedName{Namespace: ns, Name: msName},
+				groupName, roleName, roleID,
+			)
+			assert.Equal(t, tt.expectedRoleStatus, actualRoleStatus,
+				"Role status mismatch: expected %s, got %s", tt.expectedRoleStatus, actualRoleStatus)
+>>>>>>> b95c2df (Fix role status never transitioning to Running)
 		})
 	}
 }

@@ -2333,7 +2333,7 @@ func TestScaleDownServingGroupsWithPriorityAndDeletionCost(t *testing.T) {
 		description            string
 	}{
 		{
-			name:            "not_ready_groups_deleted_first",
+			name:            "deletes groups that are still creating before running groups",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			groupStatuses: map[int]datastore.ServingGroupStatus{
@@ -2347,7 +2347,7 @@ func TestScaleDownServingGroupsWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "Groups in non-running state should be deleted first regardless of index",
 		},
 		{
-			name:            "lower_deletion_cost_deleted_first_among_ready",
+			name:            "deletes groups with lower deletion cost first when all are running",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			groupStatuses: map[int]datastore.ServingGroupStatus{
@@ -2366,7 +2366,7 @@ func TestScaleDownServingGroupsWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "Among ready groups, lower deletion cost should be deleted first",
 		},
 		{
-			name:            "not_ready_status_has_priority_over_deletion_cost",
+			name:            "deletes creating groups even if they have high deletion cost",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			groupStatuses: map[int]datastore.ServingGroupStatus{
@@ -2385,7 +2385,7 @@ func TestScaleDownServingGroupsWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "Not-ready status should take priority over deletion cost",
 		},
 		{
-			name:            "mixed_status_and_deletion_cost",
+			name:            "deletes scaling and deleting groups first then picks lowest cost among running",
 			existingIndices: []int{0, 1, 2, 3, 4},
 			expectedCount:   2,
 			groupStatuses: map[int]datastore.ServingGroupStatus{
@@ -2406,7 +2406,7 @@ func TestScaleDownServingGroupsWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "Complex scenario with mixed status and costs",
 		},
 		{
-			name:            "all_groups_not_ready_delete_by_index",
+			name:            "falls back to deleting higher indices when all groups are not ready",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			groupStatuses: map[int]datastore.ServingGroupStatus{
@@ -2420,7 +2420,7 @@ func TestScaleDownServingGroupsWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "When all groups are not ready, fall back to index-based deletion",
 		},
 		{
-			name:            "same_deletion_cost_use_index_as_tiebreaker",
+			name:            "uses higher index as tiebreaker when deletion costs are equal",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			groupStatuses: map[int]datastore.ServingGroupStatus{
@@ -2439,7 +2439,7 @@ func TestScaleDownServingGroupsWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "When deletion costs are equal, use index as tiebreaker",
 		},
 		{
-			name:            "negative_deletion_cost_prioritized_for_deletion",
+			name:            "prioritizes deleting groups with negative deletion cost",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			groupStatuses: map[int]datastore.ServingGroupStatus{
@@ -3540,7 +3540,7 @@ func TestScaleDownRolesWithPriorityAndDeletionCost(t *testing.T) {
 		description            string
 	}{
 		{
-			name:            "not_ready_roles_deleted_first",
+			name:            "deletes roles that are still creating before running roles",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			roleStatuses: map[int]datastore.RoleStatus{
@@ -3554,7 +3554,7 @@ func TestScaleDownRolesWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "Roles in non-running state should be deleted first regardless of index",
 		},
 		{
-			name:            "lower_deletion_cost_deleted_first_among_ready",
+			name:            "deletes roles with lower deletion cost first when all are running",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			roleStatuses: map[int]datastore.RoleStatus{
@@ -3573,7 +3573,7 @@ func TestScaleDownRolesWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "Among ready roles, lower deletion cost should be deleted first",
 		},
 		{
-			name:            "not_ready_status_has_priority_over_deletion_cost",
+			name:            "deletes creating roles even if they have high deletion cost",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			roleStatuses: map[int]datastore.RoleStatus{
@@ -3592,7 +3592,7 @@ func TestScaleDownRolesWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "Not-ready status should take priority over deletion cost",
 		},
 		{
-			name:            "mixed_status_and_deletion_cost",
+			name:            "deletes not-found and deleting roles first then picks lowest cost among running",
 			existingIndices: []int{0, 1, 2, 3, 4},
 			expectedCount:   2,
 			roleStatuses: map[int]datastore.RoleStatus{
@@ -3613,7 +3613,7 @@ func TestScaleDownRolesWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "Complex scenario with mixed status and costs",
 		},
 		{
-			name:            "all_roles_not_ready_delete_by_index",
+			name:            "falls back to deleting higher indices when all roles are not ready",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			roleStatuses: map[int]datastore.RoleStatus{
@@ -3627,7 +3627,7 @@ func TestScaleDownRolesWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "When all roles are not ready, fall back to index-based deletion",
 		},
 		{
-			name:            "same_deletion_cost_use_index_as_tiebreaker",
+			name:            "uses higher index as tiebreaker when deletion costs are equal",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			roleStatuses: map[int]datastore.RoleStatus{
@@ -3646,7 +3646,7 @@ func TestScaleDownRolesWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "When deletion costs are equal, use index as tiebreaker",
 		},
 		{
-			name:            "negative_deletion_cost_prioritized_for_deletion",
+			name:            "prioritizes deleting roles with negative deletion cost",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			roleStatuses: map[int]datastore.RoleStatus{
@@ -3665,7 +3665,7 @@ func TestScaleDownRolesWithPriorityAndDeletionCost(t *testing.T) {
 			description:            "Negative deletion cost should prioritize deletion",
 		},
 		{
-			name:            "partial_deletion_costs_use_index_for_unspecified",
+			name:            "treats roles without deletion cost annotation as zero cost",
 			existingIndices: []int{0, 1, 2, 3},
 			expectedCount:   2,
 			roleStatuses: map[int]datastore.RoleStatus{
@@ -3972,7 +3972,7 @@ func TestCalculateRoleScore(t *testing.T) {
 // TestScaleDownRolesRunningStatusDeprioritized tests that roles with RoleRunning status
 // are deprioritized (deleted last) during scale-down operations compared to roles
 // in RoleCreating or RoleNotFound states.
-func TestScaleDownRoles(t *testing.T) {
+func TestScaleDownRolesRunningStatusDeprioritized(t *testing.T) {
 	tests := []struct {
 		name                   string
 		existingIndices        []int
@@ -3982,7 +3982,7 @@ func TestScaleDownRoles(t *testing.T) {
 		description            string
 	}{
 		{
-			name:            "running_roles_kept_over_creating_roles",
+			name:            "keeps running roles and deletes creating roles first",
 			existingIndices: []int{0, 1, 2},
 			roleStatuses: map[int]datastore.RoleStatus{
 				0: datastore.RoleRunning,
@@ -3994,7 +3994,7 @@ func TestScaleDownRoles(t *testing.T) {
 			description:            "RoleCreating (index 1) should be deleted before RoleRunning roles",
 		},
 		{
-			name:            "running_roles_kept_over_notfound_roles",
+			name:            "keeps running roles and deletes not-found roles first",
 			existingIndices: []int{0, 1, 2},
 			roleStatuses: map[int]datastore.RoleStatus{
 				0: datastore.RoleRunning,
@@ -4006,7 +4006,7 @@ func TestScaleDownRoles(t *testing.T) {
 			description:            "RoleNotFound (index 1) should be deleted before RoleRunning roles",
 		},
 		{
-			name:            "multiple_running_roles_higher_index_deleted_first",
+			name:            "deletes higher index roles first when all are running",
 			existingIndices: []int{0, 1, 2, 3},
 			roleStatuses: map[int]datastore.RoleStatus{
 				0: datastore.RoleRunning,
@@ -4019,7 +4019,7 @@ func TestScaleDownRoles(t *testing.T) {
 			description:            "Among all RoleRunning roles, higher indices (3, 2) should be deleted first",
 		},
 		{
-			name:            "mixed_statuses_not_ready_deleted_first",
+			name:            "deletes all creating and not-found roles before touching running roles",
 			existingIndices: []int{0, 1, 2, 3},
 			roleStatuses: map[int]datastore.RoleStatus{
 				0: datastore.RoleCreating, // Not ready - delete first

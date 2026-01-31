@@ -1,0 +1,128 @@
+---
+slug: release-v0.3.0
+title: "Kthena v0.3.0 Released: Production-Ready Inference Orchestration"
+authors: [hzxuzhonghu, LiZhenCheng9527, YaoZengzeng]
+tags: [release]
+date: 2026-01-31
+---
+
+# Kthena v0.3.0 Released: Production-Ready Inference Orchestration
+
+Released: 2026-01-31
+
+## Summary
+
+Release v0.3.0 establishes Kthena as a more robust and scalable platform for AI inference workloads. This release introduces significant enhancements in ModelServing, Router, and ModelBooster. Key highlights include seamless integration with **LeaderWorkerSet**, advanced **network topology-aware scheduling** for PD disaggregation, and a comprehensive **Router Observability** framework. Additionally, this version brings native **ModelServing version control**, support for **vLLM data parallel deployment**, and a complete E2E test suite for the router, ensuring high stability and reliability for production environments.
+
+<!-- truncate -->
+
+## What's New
+
+### Key Features Overview
+
+- **LeaderWorkerSet Support**: Integration with the **LeaderWorkerSet (LWS)** API allows for sophisticated management of distributed inference workloads.
+- **Role-Level Gang Scheduling & Topology Awareness**: Leverages Volcano's new `subGroupPolicy` feature to enable fine-grained, **role-based gang scheduling** and **network topology awareness**.
+- **ModelServing Partition Revision Control**: Introduced a native revision-based version control system for ModelServing.
+- **Router Observability & Debugging**: Comprehensive documentation and framework for router observability, plus a dedicated debug port.
+- **Enhanced Rolling Updates**: Support for `maxUnavailable` allows tuning the velocity of updates for faster rollouts.
+- **Plugin Support**: Flexible plugin architecture for ModelServing to inject custom configuration logic.
+
+### LeaderWorkerSet Support for ModelServing Role
+
+**Background and Motivation**:
+Distributed inference workloads often require complex topologies where a leader pod manages multiple worker pods. Configuring these relationships manually can be error-prone. By integrating with the Kubernetes LeaderWorkerSet (LWS) API, Kthena simplify the deployment and management of these workloads.
+
+**Key Capabilities**:
+
+- **Direct Integration**: ModelServing Roles can now leverage LWS to automatically manage leader-worker groups.
+- **Simplified Topology**: Reduces the complexity of defining distributed inference services requiring strict coordination.
+
+**Related**:
+
+- PR: [#609](https://github.com/volcano-sh/kthena/pull/609), [#683](https://github.com/volcano-sh/kthena/pull/683)
+- Contributors: [@zhiweideren](https://github.com/zhiweideren)
+
+### Role-Level Gang Scheduling & Topology Awareness
+
+**Background and Motivation**:
+In Prefill-Decode (PD) separation scenarios, the communication overhead between prefill and decode instances is critical. Ensuring these instances are scheduled closer together (e.g., on the same switch or rack) significantly improves performance. Kthena now enables **fine-grained, role-level control** over both gang scheduling and network topology awareness by leveraging Volcano's `subGroupPolicy`.
+
+**Key Capabilities**:
+
+- **Declarative Topology Policies**: Configure distinct network topology constraints for the entire ServingGroup (`groupPolicy`) and for individual Roles (`rolePolicy`) directly in the `ModelServing` spec.
+- **Automatic Pod Grouping**: The controller automatically labels Pods with `modelserving.volcano.sh/role` and `modelserving.volcano.sh/role-id`, enabling Volcano to form subGroups for precise topology-aware placement.
+- **Performance Optimization**: Minimizes inter-role communication latency and maximizes bandwidth utilization for intensive distributed inference jobs by co-locating related tasks on network-proximal nodes.
+- **Role-Level Gang Scheduling**: The `subGroupPolicy` also enforces **gang scheduling at the role level**, ensuring that all Pods belonging to a specific role (e.g., all `prefill-0` Pods) are scheduled together as an atomic unit. This guarantees that partial deployments of a role do not occur, which is critical for correctness in distributed inference workloads.
+
+**Note**: This feature requires Volcano v1.14+ for `subGroupPolicy` support.
+
+**Related**:
+
+- Proposal: [Network Topology](https://github.com/volcano-sh/kthena/blob/main/docs/proposal/network-topology.md)
+- PR: [#587](https://github.com/volcano-sh/kthena/pull/587)
+- Contributors: [@LiZhenCheng9527](https://github.com/LiZhenCheng9527)
+
+### ModelServing Partition Revision Control
+
+**Background and Motivation**:
+The partition field in a Kthena ModelServing defines a boundary for rolling updates, allowing you to partition the update process so that only a subset of ServingGroups are updated while others remain on the previous version. It is primarily used for canary deployments, phased rollouts, and staging updates in stateful applications where strict control over update order is necessary.
+
+**Key Capabilities**:
+
+- **Revision Tracking**: Automatically tracks changes to ModelServing configurations.
+- **Partition Protection**: Supports partition-based updates to ensure service continuity during rollouts.
+- **Rollback**: Easily revert to a previous stable revision.
+
+**Related**:
+
+- PR: [#590](https://github.com/volcano-sh/kthena/pull/590), [#653](https://github.com/volcano-sh/kthena/pull/653), [#671](https://github.com/volcano-sh/kthena/pull/671)
+- Contributors: [@FAUST-BENCHOU](https://github.com/FAUST-BENCHOU), [@LiZhenCheng9527](https://github.com/LiZhenCheng9527)
+
+### Router Observability & Debugging
+
+**Background and Motivation**:
+Deep visibility into the inference router is essential for diagnosing latency issues and ensuring SLA compliance. The new observability framework and debug port provide the necessary tools for operators.
+
+**Key Capabilities**:
+
+- **Debug Port**: A dedicated port (default `15000`) for real-time inspection of routing tables and upstream health.
+- **Comprehensive Metrics**: Detailed documentation and setup for monitoring request latency, throughput, and error rates.
+- **E2E Testing**: A robust E2E test framework covering most routing scenarios ensures reliability.
+
+**Related**:
+
+- PR: [#599](https://github.com/volcano-sh/kthena/pull/599), [#622](https://github.com/volcano-sh/kthena/pull/622)
+- Contributors: [@yashisrani](https://github.com/yashisrani), [@FAUST-BENCHOU](https://github.com/FAUST-BENCHOU)
+
+## Other Notable Changes
+
+### Features and Improvements
+
+- **[ModelServing]** Support `maxUnavailable` in modelserving rolling update [#640](https://github.com/volcano-sh/kthena/pull/640) ([@LiZhenCheng9527](https://github.com/LiZhenCheng9527))
+- **[ModelServing]** Implement extension plugin framework [#588](https://github.com/volcano-sh/kthena/pull/588) ([@hzxuzhonghu](https://github.com/hzxuzhonghu))
+- **[ModelServing]** Support vLLM data parallel deployment and Expert Parallel modes
+- **[CLI]** Add templates for PD disaggregation use cases [#571](https://github.com/volcano-sh/kthena/issues/571) ([@huntersman](https://github.com/huntersman))
+- **[Client]** Make client QPS and Burst customizable [#686](https://github.com/volcano-sh/kthena/pull/686) ([@FAUST-BENCHOU](https://github.com/FAUST-BENCHOU))
+- **[Webhooks]** Enable ModelServing webhooks by default in Helm charts [#694](https://github.com/volcano-sh/kthena/pull/694) ([@VanderChen](https://github.com/VanderChen))
+- **[Infra]** One-click deploy from source via `hack/local-up-kthena.sh` [#613](https://github.com/volcano-sh/kthena/pull/613) ([@FAUST-BENCHOU](https://github.com/FAUST-BENCHOU))
+
+### Bug Fixes
+
+- **[Scheduler]** Fix divide-by-zero in LeastRequest scoring [#723](https://github.com/volcano-sh/kthena/pull/723) ([@WHOIM1205](https://github.com/WHOIM1205))
+- **[Controller]** Fix role status transition to Running to restore scale-down protection [#706](https://github.com/volcano-sh/kthena/pull/706) ([@WHOIM1205](https://github.com/WHOIM1205))
+- **[Controller]** Fix panic in PD scheduler when no prefill pods are available [#714](https://github.com/volcano-sh/kthena/pull/714) ([@WHOIM1205](https://github.com/WHOIM1205))
+- **[Controller]** Fix silent recovery of failed pods after ModelServing controller restart [#697](https://github.com/volcano-sh/kthena/pull/697) ([@WHOIM1205](https://github.com/WHOIM1205))
+- **[Controller]** Fix recovering headless services after deletion [#598](https://github.com/volcano-sh/kthena/pull/598) ([@LiZhenCheng9527](https://github.com/LiZhenCheng9527))
+- **[Controller]** Fix validate gangpolicy minRoleReplicas [#699](https://github.com/volcano-sh/kthena/pull/699) ([@VanderChen](https://github.com/VanderChen))
+- **[Controller]** Fix controllerrevision data warping [#698](https://github.com/volcano-sh/kthena/pull/698) ([@VanderChen](https://github.com/VanderChen))
+- **[Controller]** Fix modelserving controller panic [#688](https://github.com/volcano-sh/kthena/pull/688) ([@LiZhenCheng9527](https://github.com/LiZhenCheng9527))
+- **[Controller]** Fix restart during modelserving create: pod number mismatch [#689](https://github.com/volcano-sh/kthena/pull/689) ([@hzxuzhonghu](https://github.com/hzxuzhonghu))
+- **[Controller]** Check role.Name in ModelServing validator [#684](https://github.com/volcano-sh/kthena/pull/684) ([@FAUST-BENCHOU](https://github.com/FAUST-BENCHOU))
+- **[Controller]** Fix bug where role deletion did not trigger reconstruction [#629](https://github.com/volcano-sh/kthena/pull/629) ([@LiZhenCheng9527](https://github.com/LiZhenCheng9527))
+- **[Router]** Protect Headless Services Created by ModelServing [#598](https://github.com/volcano-sh/kthena/pull/598) ([@LiZhenCheng9527](https://github.com/LiZhenCheng9527))
+
+## Contributors
+
+Thank you to all contributors who made this release possible:
+
+[@hzxuzhonghu](https://github.com/hzxuzhonghu), [@LiZhenCheng9527](https://github.com/LiZhenCheng9527), [@YaoZengzeng](https://github.com/YaoZengzeng), [@git-malu](https://github.com/git-malu), [@FAUST-BENCHOU](https://github.com/FAUST-BENCHOU), [@katara-Jayprakash](https://github.com/katara-Jayprakash), [@zhiweideren](https://github.com/zhiweideren), [@aaradhychinche-alt](https://github.com/aaradhychinche-alt), [@WHOIM1205](https://github.com/WHOIM1205), [@yashisrani](https://github.com/yashisrani), [@huntersman](https://github.com/huntersman), [@VanderChen](https://github.com/VanderChen)

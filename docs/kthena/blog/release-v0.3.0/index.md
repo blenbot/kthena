@@ -1,6 +1,6 @@
 ---
 slug: release-v0.3.0
-title: Release v0.3.0: Production Ready of Kthena's Inference Orchestration
+title: "Release v0.3.0: Production Ready of Kthena's Inference Orchestration"
 authors: [hzxuzhonghu, LiZhenCheng9527, YaoZengzeng]
 tags: [release]
 date: 2026-01-31
